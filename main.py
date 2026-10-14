@@ -591,4 +591,31 @@ SKILL_ALIASES = {
 #tfidf similarity
 def tfidfsim(text1:str,text2:str)->float:
     vec=TfidfVectorizer(stop_words="english",ngram_range=(1,3),max_features=20000,sublinear_tf=True)
-    
+    matrix=vec.fit_transform([text1,text2])
+    sim=cosine_similarity(matrix)
+    return float(float(sim[0][1])*0.2)
+#skill matching
+def find_skill(text:str):
+    text=text.lower()
+    found=set()
+    for mainskill,variation in SKILL_ALIASES.items():
+        for variations in variation:
+            skill=r"\b"+re.escape(variations)+r"\b"
+            if re.search(skill,text):
+                found.add(mainskill)
+                break
+    return found
+#calculating skill match score
+def skillmatchscore(cv:str,req:str)->float:
+    skillsfromcv=find_skill(cv)
+    skillsfromreq=find_skill(req)
+    matchedskill=skillsfromcv.intersection(skillsfromreq)
+    score=len(matchedskill)/len(skillsfromreq)
+    return float(float(score)*0.8)
+if __name__=="__main__":
+    cv_raw_text=extract("cv_path.pdf")
+    req_raw_text=extract("req_path.pdf")
+    clean_cv_text=clean_text(cv_raw_text)
+    clean_req_text=clean_text(req_raw_text)
+    status=(tfidfsim(clean_cv_text,clean_req_text)+skillmatchscore(clean_cv_text,clean_req_text))*100
+    print(f"Match score: {status:.2f}%")
