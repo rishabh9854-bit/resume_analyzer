@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resume Analyzer</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1c2430; --muted: #667085;
+    --border: #e1e5ea; --accent: #2f5fd0; --good: #1a7f4b; --bad: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --card: #1b2028; --text: #e8ebf0; --muted: #98a2b3;
+      --border: #2b323d; --accent: #6b93f0; --good: #4cc38a; --bad: #f07a70;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 1.7rem; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  input[type=file], textarea {
+    width: 100%; padding: 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--bg); color: var(--text); font: inherit;
+  }
+  textarea { min-height: 140px; resize: vertical; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tab {
+    padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); cursor: pointer; font: inherit;
+  }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.go {
+    width: 100%; padding: 12px; border: 0; border-radius: 8px;
+    background: var(--accent); color: #fff; font: inherit; font-weight: 600;
+    cursor: pointer;
+  }
+  button.go:disabled { opacity: .6; cursor: wait; }
+  .error { color: var(--bad); margin-top: 12px; }
+  .hidden { display: none; }
+  .score { font-size: 3rem; font-weight: 700; line-height: 1; }
+  .bar { height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; margin: 12px 0; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .5s; }
+  .breakdown { color: var(--muted); font-size: .9rem; }
+  h3 { margin: 18px 0 8px; font-size: 1rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 3px 10px; border-radius: 999px; font-size: .85rem; border: 1px solid; }
+  .chip.good { color: var(--good); border-color: var(--good); }
+  .chip.bad { color: var(--bad); border-color: var(--bad); }
+  .chip.extra { color: var(--muted); border-color: var(--border); }
+  .none { color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Resume Analyzer</h1>
+  <p class="sub">Upload a CV and a job description to see how well they match.</p>
+
+  <form id="form" class="card">
+    <label for="cv">Your CV (PDF)</label>
+    <input type="file" id="cv" accept="application/pdf" required>
+
+    <div style="height:18px"></div>
+    <label>Job description</label>
+    <div class="tabs">
+      <button type="button" class="tab active" data-mode="text">Paste text</button>
+      <button type="button" class="tab" data-mode="pdf">Upload PDF</button>
+    </div>
+    <textarea id="jobText" placeholder="Paste the job description here..."></textarea>
+    <input type="file" id="jobPdf" accept="application/pdf" class="hidden">
+
+    <div style="height:18px"></div>
+    <button class="go" id="submit" type="submit">Check match</button>
+    <div class="error hidden" id="error"></div>
+  </form>
+
+  <section class="card hidden" id="result">
+    <div class="score"><span id="score">0</span>%</div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="breakdown">
+      Skill match <b id="skillScore"></b>% · Text similarity <b id="textScore"></b>%
+    </div>
+    <h3>Matched skills</h3><div class="chips" id="matched"></div>
+    <h3>Missing from your CV</h3><div class="chips" id="missing"></div>
+    <h3>Other skills on your CV</h3><div class="chips" id="extra"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let mode = "text";
+
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    mode = btn.dataset.mode;
+    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === btn));
+    $("jobText").classList.toggle("hidden", mode !== "text");
+    $("jobPdf").classList.toggle("hidden", mode !== "pdf");
+  });
+});
+
+function chips(el, items, cls) {
+  el.innerHTML = "";
+  if (!items.length) {
+    el.innerHTML = '<span class="none">None</span>';
+    return;
+  }
+  items.forEach(s => {
+    const c = document.createElement("span");
+    c.className = "chip " + cls;
+    c.textContent = s;
+    el.appendChild(c);
+  });
+}
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("error").classList.add("hidden");
+  $("result").classList.add("hidden");
+
+  const fd = new FormData();
+  fd.append("cv", $("cv").files[0]);
+  if (mode === "text") fd.append("job_text", $("jobText").value);
+  else if ($("jobPdf").files[0]) fd.append("job", $("jobPdf").files[0]);
+
+  $("submit").disabled = true;
+  $("submit").textContent = "Analyzing...";
+  try {
+    const res = await fetch("/api/match", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Something went wrong.");
+
+    $("score").textContent = data.score;
+    $("skillScore").textContent = data.skill_score;
+    $("textScore").textContent = data.text_score;
+    $("bar").style.width = Math.min(data.score, 100) + "%";
+    chips($("matched"), data.matched, "good");
+    chips($("missing"), data.missing, "bad");
+    chips($("extra"), data.extra, "extra");
+    $("result").classList.remove("hidden");
+  } catch (err) {
+    $("error").textContent = err.message;
+    $("error").classList.remove("hidden");
+  } finally {
+    $("submit").disabled = false;
+    $("submit").textContent = "Check match";
+  }
+});
+</script>
+</body>
+</html>

@@ -1,8 +1,7 @@
-venv/
 __pycache__/
 *.pyc
+venv/
+.venv/
 .env
-temp_*
-nltk_data/
+.vscode/
 *.pdf
-.DS_Store
